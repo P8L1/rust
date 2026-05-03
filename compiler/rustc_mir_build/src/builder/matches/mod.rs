@@ -2694,8 +2694,11 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                         ScheduleDrops::Yes,
                     );
 
-                    let rvalue =
-                        Rvalue::Ref(re_erased, util::ref_pat_borrow_kind(mutbl), binding.source);
+                    let rvalue = Rvalue::Ref(
+                        re_erased,
+                        util::ref_pat_borrow_kind(pinnedness, mutbl),
+                        binding.source,
+                    );
                     let rvalue = match pinnedness {
                         ty::Pinnedness::Not => rvalue,
                         ty::Pinnedness::Pinned => {
@@ -2739,8 +2742,11 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             let rvalue = match binding.binding_mode.0 {
                 ByRef::No => Rvalue::Use(self.consume_by_copy_or_move(binding.source)),
                 ByRef::Yes(pinnedness, mutbl) => {
-                    let rvalue =
-                        Rvalue::Ref(re_erased, util::ref_pat_borrow_kind(mutbl), binding.source);
+                    let rvalue = Rvalue::Ref(
+                        re_erased,
+                        util::ref_pat_borrow_kind(pinnedness, mutbl),
+                        binding.source,
+                    );
                     match pinnedness {
                         ty::Pinnedness::Not => rvalue,
                         ty::Pinnedness::Pinned => {
