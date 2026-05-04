@@ -29,7 +29,7 @@ use rustc_abi::{
 };
 use rustc_ast as ast;
 use rustc_ast::expand::typetree::{FncTree, Kind, Type, TypeTree};
-use rustc_ast::node_id::NodeMap;
+use rustc_ast::node_id::{NodeMap, NodeSet};
 pub use rustc_ast_ir::{Movability, Mutability, try_visit};
 use rustc_data_structures::fx::{FxHashSet, FxIndexMap, FxIndexSet};
 use rustc_data_structures::intern::Interned;
@@ -204,6 +204,8 @@ pub struct ResolverGlobalCtxt {
 pub struct ResolverAstLowering<'tcx> {
     /// Resolutions for nodes that have a single resolution.
     pub partial_res_map: NodeMap<hir::def::PartialRes>,
+    /// Impl items accepted by resolver as `fn drop(&pin mut self)` sugar for `Drop::pin_drop`.
+    pub pin_drop_sugar_impl_items: NodeSet,
     /// Resolutions for import nodes, which have multiple resolutions in different namespaces.
     pub import_res_map: NodeMap<hir::def::PerNS<Option<Res<ast::NodeId>>>>,
     /// Resolutions for labels (node IDs of their corresponding blocks or loops).

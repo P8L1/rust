@@ -1,0 +1,34 @@
+error[E0407]: method `drop` is not a member of trait `NeedsPinDrop`
+  --> $DIR/pinned-drop-sugar-not-other-traits.rs:16:5
+   |
+LL |     fn drop(&pin mut self) {}
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^ not a member of trait `NeedsPinDrop`
+
+error[E0407]: method `drop` is not a member of trait `Drop`
+  --> $DIR/pinned-drop-sugar-not-other-traits.rs:53:9
+   |
+LL |         fn drop(&pin mut self) {}
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^ not a member of trait `Drop`
+
+error[E0046]: not all trait items implemented, missing: `pin_drop`
+  --> $DIR/pinned-drop-sugar-not-other-traits.rs:14:1
+   |
+LL |     fn pin_drop(self: Pin<&mut Self>);
+   |     ---------------------------------- `pin_drop` from trait
+...
+LL | impl NeedsPinDrop for S {
+   | ^^^^^^^^^^^^^^^^^^^^^^^ missing `pin_drop` in implementation
+
+error[E0046]: not all trait items implemented, missing: `pin_drop`
+  --> $DIR/pinned-drop-sugar-not-other-traits.rs:51:5
+   |
+LL |         fn pin_drop(self: Pin<&mut Self>);
+   |         ---------------------------------- `pin_drop` from trait
+...
+LL |     impl Drop for S {
+   |     ^^^^^^^^^^^^^^^ missing `pin_drop` in implementation
+
+error: aborting due to 4 previous errors
+
+Some errors have detailed explanations: E0046, E0407.
+For more information about an error, try `rustc --explain E0046`.

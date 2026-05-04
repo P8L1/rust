@@ -27,7 +27,7 @@ use rustc_errors::{
 use rustc_hir::def::Namespace::{self, *};
 use rustc_hir::def::{CtorKind, DefKind, LifetimeRes, NonMacroAttrKind, PartialRes, PerNS};
 use rustc_hir::def_id::{CRATE_DEF_ID, DefId, LOCAL_CRATE, LocalDefId};
-use rustc_hir::{MissingLifetimeKind, PrimTy, TraitCandidate};
+use rustc_hir::{LangItem, MissingLifetimeKind, PrimTy, TraitCandidate};
 use rustc_middle::middle::resolve_bound_vars::Set1;
 use rustc_middle::ty::{AssocTag, DelegationInfo, Visibility};
 use rustc_middle::{bug, span_bug};
@@ -1473,6 +1473,20 @@ impl<'ast, 'ra, 'tcx> Visitor<'ast> for LateResolutionVisitor<'_, 'ast, 'ra, 'tc
 }
 
 impl<'a, 'ast, 'ra, 'tcx> LateResolutionVisitor<'a, 'ast, 'ra, 'tcx> {
+    fn is_lang_drop_trait_for_resolve(&self, trait_id: DefId) -> bool {
+        if let Some(local_def_id) = trait_id.as_local() {
+            return self.r.local_lang_drop_traits.contains(&local_def_id);
+        }
+
+        // Resolver output is an input to the all-crates lang-items query, so use
+        // raw local AST collection plus external crate metadata instead.
+        self.r
+            .tcx
+            .defined_lang_items(trait_id.krate)
+            .iter()
+            .any(|&(def_id, lang_item)| def_id == trait_id && lang_item == LangItem::Drop)
+    }
+
     fn new(resolver: &'a mut Resolver<'ra, 'tcx>) -> LateResolutionVisitor<'a, 'ast, 'ra, 'tcx> {
         // During late resolution we only track the module component of the parent scope,
         // although it may be useful to track other components as well for diagnostics.
@@ -3542,6 +3556,25 @@ impl<'a, 'ast, 'ra, 'tcx> LateResolutionVisitor<'a, 'ast, 'ra, 'tcx> {
         );
     }
 
+    fn is_drop_impl_item_pin_drop_sugar(
+        &self,
+        trait_id: Option<DefId>,
+        ident: Ident,
+        kind: &AssocItemKind,
+    ) -> bool {
+        if !trait_id.is_some_and(|trait_id| self.is_lang_drop_trait_for_resolve(trait_id))
+            || ident.name != sym::drop
+        {
+            return false;
+        }
+
+        let AssocItemKind::Fn(box Fn { sig, .. }) = kind else {
+            return false;
+        };
+
+        sig.decl.inputs.first().is_some_and(Param::is_pinned_mut_self_receiver)
+    }
+
     fn resolve_impl_item(
         &mut self,
         item: &'ast AssocItem,
@@ -3645,17 +3678,32 @@ impl<'a, 'ast, 'ra, 'tcx> LateResolutionVisitor<'a, 'ast, 'ra, 'tcx> {
                     LifetimeBinderKind::Function,
                     generics.span,
                     |this| {
+                        let is_pin_drop_sugar =
+                            this.is_drop_impl_item_pin_drop_sugar(trait_id, *ident, &item.kind);
+                        let effective_ident = if is_pin_drop_sugar {
+                            Ident::new(sym::pin_drop, ident.span)
+                        } else {
+                            *ident
+                        };
                         // If this is a trait impl, ensure the method
                         // exists in trait
                         this.check_trait_item(
                             item.id,
-                            *ident,
+                            effective_ident,
                             &item.kind,
                             ValueNS,
                             item.span,
                             seen_trait_items,
                             |i, s, c| MethodNotMemberOfTrait(i, s, c),
                         );
+
+                        if is_pin_drop_sugar
+                            && this.r.partial_res_map.get(&item.id).is_some_and(|res| {
+                                matches!(res.full_res(), Some(Res::Def(DefKind::AssocFn, _)))
+                            })
+                        {
+                            this.r.pin_drop_sugar_impl_items.insert(item.id);
+                        }
 
                         visit::walk_assoc_item(this, item, AssocCtxt::Impl { of_trait: true })
                     },
@@ -5594,6 +5642,15 @@ impl<'ast> Visitor<'ast> for ItemInfoCollector<'_, '_, '_> {
                 }
 
                 let def_id = self.r.local_def_id(item.id);
+                if matches!(&item.kind, ItemKind::Trait(..))
+                    && item
+                        .attrs
+                        .iter()
+                        .any(|attr| attr.has_name(sym::lang) && attr.value_str() == Some(sym::drop))
+                {
+                    self.r.local_lang_drop_traits.insert(def_id);
+                }
+
                 let count = generics
                     .params
                     .iter()

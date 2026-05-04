@@ -2985,6 +2985,12 @@ impl Param {
         None
     }
 
+    /// Returns `true` if parameter is exactly `&pin mut self`.
+    pub fn is_pinned_mut_self_receiver(&self) -> bool {
+        self.to_self()
+            .is_some_and(|eself| matches!(eself.node, SelfKind::Pinned(None, Mutability::Mut)))
+    }
+
     /// Returns `true` if parameter is `self`.
     pub fn is_self(&self) -> bool {
         if let PatKind::Ident(_, ident, _) = self.pat.kind {

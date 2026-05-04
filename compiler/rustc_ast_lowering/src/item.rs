@@ -1209,7 +1209,7 @@ impl<'hir> LoweringContext<'_, 'hir> {
             Target::from_assoc_item_kind(&i.kind, AssocCtxt::Impl { of_trait: is_in_trait_impl }),
         );
 
-        let (ident, (generics, kind)) = match &i.kind {
+        let (mut ident, (generics, kind)) = match &i.kind {
             AssocItemKind::Const(ConstItem {
                 ident,
                 generics,
@@ -1309,6 +1309,25 @@ impl<'hir> LoweringContext<'_, 'hir> {
         };
 
         let span = self.lower_span(i.span);
+        let trait_item_def_id = if is_in_trait_impl {
+            Some(
+                self.get_partial_res(i.id)
+                    .and_then(|r| r.expect_full_res().opt_def_id())
+                    .ok_or_else(|| {
+                        self.dcx().span_delayed_bug(
+                            span,
+                            "could not resolve trait item being implemented",
+                        )
+                    }),
+            )
+        } else {
+            None
+        };
+
+        if self.resolver.pin_drop_sugar_impl_items.contains(&i.id) {
+            ident = Ident::new(sym::pin_drop, ident.span);
+        }
+
         let item = hir::ImplItem {
             owner_id: hir_id.expect_owner(),
             ident: self.lower_ident(ident),
@@ -1316,15 +1335,7 @@ impl<'hir> LoweringContext<'_, 'hir> {
             impl_kind: if is_in_trait_impl {
                 ImplItemImplKind::Trait {
                     defaultness,
-                    trait_item_def_id: self
-                        .get_partial_res(i.id)
-                        .and_then(|r| r.expect_full_res().opt_def_id())
-                        .ok_or_else(|| {
-                            self.dcx().span_delayed_bug(
-                                span,
-                                "could not resolve trait item being implemented",
-                            )
-                        }),
+                    trait_item_def_id: trait_item_def_id.unwrap(),
                 }
             } else {
                 ImplItemImplKind::Inherent { vis_span: self.lower_span(i.vis.span) }

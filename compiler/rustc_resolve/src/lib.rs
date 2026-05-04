@@ -37,7 +37,7 @@ use late::{
 };
 use macros::{MacroRulesDecl, MacroRulesScope, MacroRulesScopeRef};
 use rustc_arena::{DroplessArena, TypedArena};
-use rustc_ast::node_id::NodeMap;
+use rustc_ast::node_id::{NodeMap, NodeSet};
 use rustc_ast::{
     self as ast, AngleBracketedArg, CRATE_NODE_ID, Crate, Expr, ExprKind, GenericArg, GenericArgs,
     Generics, NodeId, Path, attr,
@@ -56,7 +56,9 @@ use rustc_hir::def::{
     self, CtorOf, DefKind, DocLinkResMap, LifetimeRes, MacroKinds, NonMacroAttrKind, PartialRes,
     PerNS,
 };
-use rustc_hir::def_id::{CRATE_DEF_ID, CrateNum, DefId, LOCAL_CRATE, LocalDefId, LocalDefIdMap};
+use rustc_hir::def_id::{
+    CRATE_DEF_ID, CrateNum, DefId, LOCAL_CRATE, LocalDefId, LocalDefIdMap, LocalDefIdSet,
+};
 use rustc_hir::definitions::{PerParentDisambiguatorState, PerParentDisambiguatorsMap};
 use rustc_hir::{PrimTy, TraitCandidate, find_attr};
 use rustc_index::bit_set::DenseBitSet;
@@ -1371,6 +1373,10 @@ pub struct Resolver<'ra, 'tcx> {
 
     /// Resolutions for nodes that have a single resolution.
     partial_res_map: NodeMap<PartialRes> = Default::default(),
+    /// Local traits with a raw `#[lang = "drop"]` AST attribute.
+    local_lang_drop_traits: LocalDefIdSet = Default::default(),
+    /// Impl items accepted as `fn drop(&pin mut self)` sugar for `Drop::pin_drop`.
+    pin_drop_sugar_impl_items: NodeSet = Default::default(),
     /// Resolutions for import nodes, which have multiple resolutions in different namespaces.
     import_res_map: NodeMap<PerNS<Option<Res>>> = Default::default(),
     /// An import will be inserted into this map if it has been used.
@@ -1847,6 +1853,8 @@ impl<'ra, 'tcx> Resolver<'ra, 'tcx> {
             multi_segment_macro_resolutions: Default::default(),
             lint_buffer: LintBuffer::default(),
             node_id_to_def_id,
+            local_lang_drop_traits: Default::default(),
+            pin_drop_sugar_impl_items: Default::default(),
             invocation_parents,
             trait_impls: Default::default(),
             confused_type_with_std_module: Default::default(),
@@ -1978,6 +1986,7 @@ impl<'ra, 'tcx> Resolver<'ra, 'tcx> {
         };
         let ast_lowering = ty::ResolverAstLowering {
             partial_res_map: self.partial_res_map,
+            pin_drop_sugar_impl_items: self.pin_drop_sugar_impl_items,
             import_res_map: self.import_res_map,
             label_res_map: self.label_res_map,
             lifetimes_res_map: self.lifetimes_res_map,
