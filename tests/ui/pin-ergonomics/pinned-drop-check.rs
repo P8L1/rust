@@ -1,4 +1,5 @@
 //@ edition:2024
+//@ normalize-stderr: "(   \|             \^+)\n   \|             \|\n   \|             explicit destructor calls not allowed\n   \|             help: consider using `drop` function: `drop`" -> "$1 explicit destructor calls not allowed"
 #![feature(pin_ergonomics)]
 #![allow(incomplete_features)]
 

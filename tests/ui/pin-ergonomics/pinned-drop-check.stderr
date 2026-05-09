@@ -1,12 +1,12 @@
 error: `Bar` must implement `pin_drop`
-  --> $DIR/pinned-drop-check.rs:18:9
+  --> $DIR/pinned-drop-check.rs:19:9
    |
 LL |         fn drop(&mut self) {}
    |         ^^^^^^^^^^^^^^^^^^
    |
    = help: structurally pinned types must keep `Pin`'s safety contract
 note: `Bar` is marked `#[pin_v2]` here
-  --> $DIR/pinned-drop-check.rs:10:5
+  --> $DIR/pinned-drop-check.rs:11:5
    |
 LL |     #[pin_v2]
    |     ^^^^^^^^^
@@ -21,7 +21,7 @@ LL -     #[pin_v2]
    |
 
 error: conflicting implementations of `Drop::drop` and `Drop::pin_drop`
-  --> $DIR/pinned-drop-check.rs:41:5
+  --> $DIR/pinned-drop-check.rs:42:5
    |
 LL |     impl Drop for Foo {
    |     ^^^^^^^^^^^^^^^^^
@@ -32,7 +32,7 @@ LL |         fn pin_drop(&pin mut self) {}
    |         -------------------------- `pin_drop(&pin mut self)` implemented here
 
 error: conflicting implementations of `Drop::drop` and `Drop::pin_drop`
-  --> $DIR/pinned-drop-check.rs:47:5
+  --> $DIR/pinned-drop-check.rs:48:5
    |
 LL |     impl Drop for Bar {
    |     ^^^^^^^^^^^^^^^^^
@@ -43,26 +43,26 @@ LL |         fn pin_drop(&pin mut self) {}
    |         -------------------------- `pin_drop(&pin mut self)` implemented here
 
 error[E0046]: not all trait items implemented, missing one of: `drop`, `pin_drop`
-  --> $DIR/pinned-drop-check.rs:59:5
+  --> $DIR/pinned-drop-check.rs:60:5
    |
 LL |     impl Drop for Foo {}
    |     ^^^^^^^^^^^^^^^^^ missing one of `drop`, `pin_drop` in implementation
 
 error[E0046]: not all trait items implemented, missing one of: `drop`, `pin_drop`
-  --> $DIR/pinned-drop-check.rs:60:5
+  --> $DIR/pinned-drop-check.rs:61:5
    |
 LL |     impl Drop for Bar {}
    |     ^^^^^^^^^^^^^^^^^ missing one of `drop`, `pin_drop` in implementation
 
 error: `Bar` must implement `pin_drop`
-  --> $DIR/pinned-drop-check.rs:72:9
+  --> $DIR/pinned-drop-check.rs:73:9
    |
 LL |         fn drop(&pin mut self) {}
    |         ^^^^^^^^^^^^^^^^^^^^^^
    |
    = help: structurally pinned types must keep `Pin`'s safety contract
 note: `Bar` is marked `#[pin_v2]` here
-  --> $DIR/pinned-drop-check.rs:65:5
+  --> $DIR/pinned-drop-check.rs:66:5
    |
 LL |     #[pin_v2]
    |     ^^^^^^^^^
@@ -76,7 +76,7 @@ LL -     #[pin_v2]
    |
 
 error[E0053]: method `drop` has an incompatible type for trait
-  --> $DIR/pinned-drop-check.rs:69:17
+  --> $DIR/pinned-drop-check.rs:70:17
    |
 LL |         fn drop(&pin mut self) {}
    |                 ^^^^^^^^^^^^^ expected `&mut drop_wrong_type::Foo`, found `Pin<&mut drop_wrong_type::Foo>`
@@ -90,7 +90,7 @@ LL +         fn drop(&mut self) {}
    |
 
 error[E0053]: method `drop` has an incompatible type for trait
-  --> $DIR/pinned-drop-check.rs:72:17
+  --> $DIR/pinned-drop-check.rs:73:17
    |
 LL |         fn drop(&pin mut self) {}
    |                 ^^^^^^^^^^^^^ expected `&mut drop_wrong_type::Bar`, found `Pin<&mut drop_wrong_type::Bar>`
@@ -104,7 +104,7 @@ LL +         fn drop(&mut self) {}
    |
 
 error[E0053]: method `pin_drop` has an incompatible type for trait
-  --> $DIR/pinned-drop-check.rs:84:21
+  --> $DIR/pinned-drop-check.rs:85:21
    |
 LL |         fn pin_drop(&mut self) {}
    |                     ^^^^^^^^^ expected `Pin<&mut pin_drop_wrong_type::Foo>`, found `&mut pin_drop_wrong_type::Foo`
@@ -118,7 +118,7 @@ LL +         fn pin_drop(self: Pin<&mut pin_drop_wrong_type::Foo>) {}
    |
 
 error[E0053]: method `pin_drop` has an incompatible type for trait
-  --> $DIR/pinned-drop-check.rs:88:21
+  --> $DIR/pinned-drop-check.rs:89:21
    |
 LL |         fn pin_drop(&mut self) {}
    |                     ^^^^^^^^^ expected `Pin<&mut pin_drop_wrong_type::Bar>`, found `&mut pin_drop_wrong_type::Bar`
@@ -132,14 +132,14 @@ LL +         fn pin_drop(self: Pin<&mut pin_drop_wrong_type::Bar>) {}
    |
 
 error: `Bar` must implement `pin_drop`
-  --> $DIR/pinned-drop-check.rs:103:9
+  --> $DIR/pinned-drop-check.rs:104:9
    |
 LL |         fn drop(&mut self) {
    |         ^^^^^^^^^^^^^^^^^^
    |
    = help: structurally pinned types must keep `Pin`'s safety contract
 note: `Bar` is marked `#[pin_v2]` here
-  --> $DIR/pinned-drop-check.rs:94:5
+  --> $DIR/pinned-drop-check.rs:95:5
    |
 LL |     #[pin_v2]
    |     ^^^^^^^^^
@@ -154,40 +154,28 @@ LL -     #[pin_v2]
    |
 
 error[E0040]: explicit use of destructor method
-  --> $DIR/pinned-drop-check.rs:99:13
+  --> $DIR/pinned-drop-check.rs:100:13
    |
 LL |             Drop::pin_drop(todo!());
-   |             ^^^^^^^^^^^^^^
-   |             |
-   |             explicit destructor calls not allowed
-   |             help: consider using `drop` function: `drop`
+   |             ^^^^^^^^^^^^^^ explicit destructor calls not allowed
 
 error[E0040]: explicit use of destructor method
-  --> $DIR/pinned-drop-check.rs:105:13
+  --> $DIR/pinned-drop-check.rs:106:13
    |
 LL |             Drop::pin_drop(todo!());
-   |             ^^^^^^^^^^^^^^
-   |             |
-   |             explicit destructor calls not allowed
-   |             help: consider using `drop` function: `drop`
+   |             ^^^^^^^^^^^^^^ explicit destructor calls not allowed
 
 error[E0040]: explicit use of destructor method
-  --> $DIR/pinned-drop-check.rs:117:13
+  --> $DIR/pinned-drop-check.rs:118:13
    |
 LL |             Drop::drop(todo!());
-   |             ^^^^^^^^^^
-   |             |
-   |             explicit destructor calls not allowed
-   |             help: consider using `drop` function: `drop`
+   |             ^^^^^^^^^^ explicit destructor calls not allowed
 
 error[E0040]: explicit use of destructor method
-  --> $DIR/pinned-drop-check.rs:122:13
+  --> $DIR/pinned-drop-check.rs:123:13
    |
 LL |             Drop::drop(todo!());
-   |             ^^^^^^^^^^
-   |             |
-   |             explicit destructor calls not allowed
-   |             help: consider using `drop` function: `drop`
+   |             ^^^^^^^^^^ explicit destructor calls not allowed
 
 error: aborting due to 15 previous errors
 
