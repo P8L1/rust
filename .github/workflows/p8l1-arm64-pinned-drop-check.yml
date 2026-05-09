@@ -1,0 +1,82 @@
+name: P8L1 ARM64 pinned-drop UI check
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - p8l1-ci-test-144537-pinned-drop-ui-arm64
+
+permissions:
+  contents: read
+
+jobs:
+  pinned-drop-ui-arm64:
+    name: ARM64 pinned-drop UI test
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: true
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            ninja-build \
+            pkg-config \
+            python3 \
+            curl \
+            git \
+            lld
+
+      - name: Show machine info
+        run: |
+          uname -a
+          uname -m
+          gcc --version
+          python3 --version
+          git --version
+
+      - name: Write bootstrap.toml
+        run: |
+          cat > bootstrap.toml <<'EOF'
+          profile = "compiler"
+          change-id = "ignore"
+
+          [build]
+          submodules = false
+          docs = false
+          compiler-docs = false
+          extended = false
+          build-stage = 2
+          test-stage = 2
+          verbose = 1
+
+          [rust]
+          download-rustc = false
+          incremental = false
+          debug-assertions = true
+          debug-logging = false
+          debuginfo-level = "line-tables-only"
+          backtrace-on-ice = true
+          lto = "off"
+
+          [llvm]
+          download-ci-llvm = false
+          ninja = true
+          assertions = false
+          EOF
+
+      - name: Run pinned-drop UI test on ARM64 Linux
+        run: |
+          ./x.py --stage 2 test tests/ui --test-args "pin-ergonomics/pinned-drop-check.rs --force-rerun"
+
+      - name: Run tidy
+        run: |
+          ./x.py test tidy
