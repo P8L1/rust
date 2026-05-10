@@ -1,0 +1,102 @@
+name: PR 144537 hir-def reproduction
+
+run-name: PR 144537 hir-def reproduction
+
+on:
+  push:
+    branches:
+      - repro/pr144537-hir-def
+  workflow_dispatch:
+
+jobs:
+  hir-def-linux-reproduction:
+    name: hir-def linux reproduction
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    env:
+      RUST_BACKTRACE: full
+      RUST_LOG: debug
+      RUSTC_LOG: rustc_borrowck=info,rustc_typeck=info,rustc_mir_transform=info
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Checkout exact source commit
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git checkout --detach f56dcfe8720cce895d6f3622e1e7c9dfd7bc1151
+
+      - name: Show checkout info
+        shell: bash
+        run: |
+          set -euxo pipefail
+          pwd
+          git status --short
+          git rev-parse HEAD
+          git branch --show-current
+          git remote -v
+
+      - name: Prepare required submodule
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git submodule sync library/backtrace
+          git submodule update --init --depth 1 library/backtrace
+
+      - name: Configure bootstrap
+        shell: bash
+        run: |
+          set -euxo pipefail
+          if [ -f bootstrap.toml ]; then
+            cp bootstrap.toml bootstrap.toml.saved
+          fi
+          cat > bootstrap.toml <<'EOF'
+          profile = "compiler"
+          change-id = "ignore"
+
+          [build]
+          submodules = false
+          docs = false
+          compiler-docs = false
+          extended = false
+          verbose = 2
+
+          [rust]
+          download-rustc = false
+          incremental = false
+          debug-assertions = true
+          debug-logging = true
+          debuginfo-level = "line-tables-only"
+          backtrace-on-ice = true
+          lto = "off"
+
+          [llvm]
+          download-ci-llvm = true
+          ninja = true
+          assertions = false
+          EOF
+
+      - name: Run focused hir-def reproduction
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p repro-logs
+          {
+            echo "commit=$(git rev-parse HEAD)"
+            echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            python3 x.py test src/tools/rust-analyzer --stage 2 --test-args "--nocapture"
+          } 2>&1 | tee repro-logs/hir-def-repro.log
+
+      - name: Upload reproduction log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hir-def-repro-log
+          path: repro-logs/hir-def-repro.log
+          if-no-files-found: warn
