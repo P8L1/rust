@@ -27,7 +27,7 @@ use rustc_errors::{
 use rustc_hir::def::Namespace::{self, *};
 use rustc_hir::def::{CtorKind, DefKind, LifetimeRes, NonMacroAttrKind, PartialRes, PerNS};
 use rustc_hir::def_id::{CRATE_DEF_ID, DefId, LOCAL_CRATE, LocalDefId};
-use rustc_hir::{LangItem, MissingLifetimeKind, PrimTy, TraitCandidate};
+use rustc_hir::{MissingLifetimeKind, PrimTy, TraitCandidate};
 use rustc_middle::middle::resolve_bound_vars::Set1;
 use rustc_middle::ty::{AssocTag, DelegationInfo, Visibility};
 use rustc_middle::{bug, span_bug};
@@ -1473,20 +1473,6 @@ impl<'ast, 'ra, 'tcx> Visitor<'ast> for LateResolutionVisitor<'_, 'ast, 'ra, 'tc
 }
 
 impl<'a, 'ast, 'ra, 'tcx> LateResolutionVisitor<'a, 'ast, 'ra, 'tcx> {
-    fn is_lang_drop_trait_for_resolve(&self, trait_id: DefId) -> bool {
-        if let Some(local_def_id) = trait_id.as_local() {
-            return self.r.local_lang_drop_traits.contains(&local_def_id);
-        }
-
-        // Resolver output is an input to the all-crates lang-items query, so use
-        // raw local AST collection plus external crate metadata instead.
-        self.r
-            .tcx
-            .defined_lang_items(trait_id.krate)
-            .iter()
-            .any(|&(def_id, lang_item)| def_id == trait_id && lang_item == LangItem::Drop)
-    }
-
     fn new(resolver: &'a mut Resolver<'ra, 'tcx>) -> LateResolutionVisitor<'a, 'ast, 'ra, 'tcx> {
         // During late resolution we only track the module component of the parent scope,
         // although it may be useful to track other components as well for diagnostics.
@@ -3558,21 +3544,19 @@ impl<'a, 'ast, 'ra, 'tcx> LateResolutionVisitor<'a, 'ast, 'ra, 'tcx> {
 
     fn is_drop_impl_item_pin_drop_sugar(
         &self,
-        trait_id: Option<DefId>,
+        is_in_trait_impl: bool,
         ident: Ident,
-        kind: &AssocItemKind,
+        sig: &FnSig,
     ) -> bool {
-        if !trait_id.is_some_and(|trait_id| self.is_lang_drop_trait_for_resolve(trait_id))
-            || ident.name != sym::drop
-        {
+        if !is_in_trait_impl || ident.name != sym::drop {
             return false;
         }
 
-        let AssocItemKind::Fn(box Fn { sig, .. }) = kind else {
-            return false;
-        };
-
-        sig.decl.inputs.first().is_some_and(Param::is_pinned_mut_self_receiver)
+        sig.decl.inputs.first().is_some_and(|param| {
+            param
+                .to_self()
+                .is_some_and(|eself| matches!(eself.node, SelfKind::Pinned(None, Mutability::Mut)))
+        })
     }
 
     fn resolve_impl_item(
@@ -3624,6 +3608,7 @@ impl<'a, 'ast, 'ra, 'tcx> LateResolutionVisitor<'a, 'ast, 'ra, 'tcx> {
                                         this.check_trait_item(
                                             item.id,
                                             *ident,
+                                            *ident,
                                             &item.kind,
                                             ValueNS,
                                             item.span,
@@ -3668,7 +3653,7 @@ impl<'a, 'ast, 'ra, 'tcx> LateResolutionVisitor<'a, 'ast, 'ra, 'tcx> {
                 );
                 self.resolve_define_opaques(define_opaque);
             }
-            AssocItemKind::Fn(Fn { ident, generics, define_opaque, .. }) => {
+            AssocItemKind::Fn(Fn { sig, ident, generics, define_opaque, .. }) => {
                 debug!("resolve_implementation AssocItemKind::Fn");
                 // We also need a new scope for the impl item type parameters.
                 self.with_generic_param_rib(
@@ -3679,22 +3664,31 @@ impl<'a, 'ast, 'ra, 'tcx> LateResolutionVisitor<'a, 'ast, 'ra, 'tcx> {
                     generics.span,
                     |this| {
                         let is_pin_drop_sugar =
-                            this.is_drop_impl_item_pin_drop_sugar(trait_id, *ident, &item.kind);
+                            this.is_drop_impl_item_pin_drop_sugar(is_in_trait_impl, *ident, sig);
                         let effective_ident = if is_pin_drop_sugar {
                             Ident::new(sym::pin_drop, ident.span)
                         } else {
                             *ident
                         };
+                        let diagnostic_ident =
+                            if is_pin_drop_sugar { *ident } else { effective_ident };
                         // If this is a trait impl, ensure the method
                         // exists in trait
                         this.check_trait_item(
                             item.id,
                             effective_ident,
+                            diagnostic_ident,
                             &item.kind,
                             ValueNS,
                             item.span,
                             seen_trait_items,
-                            |i, s, c| MethodNotMemberOfTrait(i, s, c),
+                            |i, s, c| {
+                                if is_pin_drop_sugar {
+                                    PinDropSugarOnlyForDrop
+                                } else {
+                                    MethodNotMemberOfTrait(i, s, c)
+                                }
+                            },
                         );
 
                         if is_pin_drop_sugar
@@ -3728,6 +3722,7 @@ impl<'a, 'ast, 'ra, 'tcx> LateResolutionVisitor<'a, 'ast, 'ra, 'tcx> {
                             this.check_trait_item(
                                 item.id,
                                 *ident,
+                                *ident,
                                 &item.kind,
                                 TypeNS,
                                 item.span,
@@ -3753,6 +3748,7 @@ impl<'a, 'ast, 'ra, 'tcx> LateResolutionVisitor<'a, 'ast, 'ra, 'tcx> {
                         this.check_trait_item(
                             item.id,
                             delegation.ident,
+                            delegation.ident,
                             &item.kind,
                             ValueNS,
                             item.span,
@@ -3777,6 +3773,7 @@ impl<'a, 'ast, 'ra, 'tcx> LateResolutionVisitor<'a, 'ast, 'ra, 'tcx> {
         &mut self,
         id: NodeId,
         mut ident: Ident,
+        mut diagnostic_ident: Ident,
         kind: &AssocItemKind,
         ns: Namespace,
         span: Span,
@@ -3790,6 +3787,7 @@ impl<'a, 'ast, 'ra, 'tcx> LateResolutionVisitor<'a, 'ast, 'ra, 'tcx> {
             return;
         };
         ident.span.normalize_to_macros_2_0_and_adjust(module.expansion);
+        diagnostic_ident.span.normalize_to_macros_2_0_and_adjust(module.expansion);
         let key = BindingKey::new(IdentKey::new(ident), ns);
         let mut decl = self.r.resolution(module, key).and_then(|r| r.best_decl());
         debug!(?decl);
@@ -3825,10 +3823,10 @@ impl<'a, 'ast, 'ra, 'tcx> LateResolutionVisitor<'a, 'ast, 'ra, 'tcx> {
 
         let Some(decl) = decl else {
             // We could not find the method: report an error.
-            let candidate = self.find_similarly_named_assoc_item(ident.name, kind);
+            let candidate = self.find_similarly_named_assoc_item(diagnostic_ident.name, kind);
             let path = &self.current_trait_ref.as_ref().unwrap().1.path;
             let path_names = path_names_to_string(path);
-            self.report_error(span, err(ident, path_names, candidate));
+            self.report_error(span, err(diagnostic_ident, path_names, candidate));
             feed_visibility(self, module.def_id());
             return;
         };
@@ -5642,15 +5640,6 @@ impl<'ast> Visitor<'ast> for ItemInfoCollector<'_, '_, '_> {
                 }
 
                 let def_id = self.r.local_def_id(item.id);
-                if matches!(&item.kind, ItemKind::Trait(..))
-                    && item
-                        .attrs
-                        .iter()
-                        .any(|attr| attr.has_name(sym::lang) && attr.value_str() == Some(sym::drop))
-                {
-                    self.r.local_lang_drop_traits.insert(def_id);
-                }
-
                 let count = generics
                     .params
                     .iter()

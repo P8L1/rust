@@ -1192,6 +1192,39 @@ impl<'hir> LoweringContext<'_, 'hir> {
         })
     }
 
+    fn validate_pin_drop_sugar_impl_item(
+        &self,
+        i: &AssocItem,
+        ident: Ident,
+        trait_item_def_id: Result<DefId, ErrorGuaranteed>,
+    ) -> (Ident, Result<DefId, ErrorGuaranteed>) {
+        let def_id = match trait_item_def_id {
+            Ok(def_id) => def_id,
+            Err(guar) => return (ident, Err(guar)),
+        };
+
+        let def_key = self.tcx.def_key(def_id);
+        let parent = def_key.parent.map(|index| DefId { krate: def_id.krate, index });
+        let is_drop_pin_drop = self.tcx.lang_items().drop_trait().is_some_and(|drop_trait| {
+            parent == Some(drop_trait)
+                && def_key.disambiguated_data.data.get_opt_name() == Some(sym::pin_drop)
+        });
+        if is_drop_pin_drop {
+            // Associated item collection still derives the impl item's name from HIR.
+            return (Ident::new(sym::pin_drop, ident.span), Ok(def_id));
+        }
+
+        let guar = self
+            .dcx()
+            .struct_span_err(
+                i.span,
+                "method `drop` with `&pin mut self` is only supported for the `Drop` trait",
+            )
+            .with_span_label(i.span, "not a `Drop::pin_drop` implementation")
+            .emit();
+        (ident, Err(guar))
+    }
+
     fn lower_impl_item(
         &mut self,
         i: &AssocItem,
@@ -1209,7 +1242,7 @@ impl<'hir> LoweringContext<'_, 'hir> {
             Target::from_assoc_item_kind(&i.kind, AssocCtxt::Impl { of_trait: is_in_trait_impl }),
         );
 
-        let (mut ident, (generics, kind)) = match &i.kind {
+        let (ident, (generics, kind)) = match &i.kind {
             AssocItemKind::Const(ConstItem {
                 ident,
                 generics,
@@ -1309,37 +1342,30 @@ impl<'hir> LoweringContext<'_, 'hir> {
         };
 
         let span = self.lower_span(i.span);
-        let trait_item_def_id = if is_in_trait_impl {
-            Some(
-                self.get_partial_res(i.id)
-                    .and_then(|r| r.expect_full_res().opt_def_id())
-                    .ok_or_else(|| {
-                        self.dcx().span_delayed_bug(
-                            span,
-                            "could not resolve trait item being implemented",
-                        )
-                    }),
-            )
+        let (effective_ident, impl_kind) = if is_in_trait_impl {
+            let trait_item_def_id = self
+                .get_partial_res(i.id)
+                .and_then(|r| r.expect_full_res().opt_def_id())
+                .ok_or_else(|| {
+                    self.dcx()
+                        .span_delayed_bug(span, "could not resolve trait item being implemented")
+                });
+            let (effective_ident, trait_item_def_id) =
+                if self.resolver.pin_drop_sugar_impl_items.contains(&i.id) {
+                    self.validate_pin_drop_sugar_impl_item(i, ident, trait_item_def_id)
+                } else {
+                    (ident, trait_item_def_id)
+                };
+            (effective_ident, ImplItemImplKind::Trait { defaultness, trait_item_def_id })
         } else {
-            None
+            (ident, ImplItemImplKind::Inherent { vis_span: self.lower_span(i.vis.span) })
         };
-
-        if self.resolver.pin_drop_sugar_impl_items.contains(&i.id) {
-            ident = Ident::new(sym::pin_drop, ident.span);
-        }
 
         let item = hir::ImplItem {
             owner_id: hir_id.expect_owner(),
-            ident: self.lower_ident(ident),
+            ident: self.lower_ident(effective_ident),
             generics,
-            impl_kind: if is_in_trait_impl {
-                ImplItemImplKind::Trait {
-                    defaultness,
-                    trait_item_def_id: trait_item_def_id.unwrap(),
-                }
-            } else {
-                ImplItemImplKind::Inherent { vis_span: self.lower_span(i.vis.span) }
-            },
+            impl_kind,
             kind,
             span,
             has_delayed_lints: !self.delayed_lints.is_empty(),

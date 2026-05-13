@@ -65,14 +65,14 @@ impl<T: PointeeSized> Deref for &mut T {
     }
 }
 
-#[lang = "drop"]
-trait Drop {
-    fn drop(&mut self) {}
-    fn pin_drop(self: Pin<&mut Self>) {}
-}
-
 struct LocalDrop;
 
 impl Drop for LocalDrop {
     fn drop(&pin mut self) {}
+}
+
+#[lang = "drop"]
+trait Drop {
+    fn drop(&mut self) {}
+    fn pin_drop(self: Pin<&mut Self>) {}
 }

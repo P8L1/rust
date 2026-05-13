@@ -56,9 +56,7 @@ use rustc_hir::def::{
     self, CtorOf, DefKind, DocLinkResMap, LifetimeRes, MacroKinds, NonMacroAttrKind, PartialRes,
     PerNS,
 };
-use rustc_hir::def_id::{
-    CRATE_DEF_ID, CrateNum, DefId, LOCAL_CRATE, LocalDefId, LocalDefIdMap, LocalDefIdSet,
-};
+use rustc_hir::def_id::{CRATE_DEF_ID, CrateNum, DefId, LOCAL_CRATE, LocalDefId, LocalDefIdMap};
 use rustc_hir::definitions::{PerParentDisambiguatorState, PerParentDisambiguatorsMap};
 use rustc_hir::{PrimTy, TraitCandidate, find_attr};
 use rustc_index::bit_set::DenseBitSet;
@@ -259,6 +257,8 @@ enum ResolutionError<'ra> {
     NameAlreadyUsedInParameterList(Ident, Span),
     /// Error E0407: method is not a member of trait.
     MethodNotMemberOfTrait(Ident, String, Option<Symbol>),
+    /// `fn drop(&pin mut self)` is only valid as `Drop::pin_drop` sugar.
+    PinDropSugarOnlyForDrop,
     /// Error E0437: type is not a member of trait.
     TypeNotMemberOfTrait(Ident, String, Option<Symbol>),
     /// Error E0438: const is not a member of trait.
@@ -1373,8 +1373,6 @@ pub struct Resolver<'ra, 'tcx> {
 
     /// Resolutions for nodes that have a single resolution.
     partial_res_map: NodeMap<PartialRes> = Default::default(),
-    /// Local traits with a raw `#[lang = "drop"]` AST attribute.
-    local_lang_drop_traits: LocalDefIdSet = Default::default(),
     /// Impl items accepted as `fn drop(&pin mut self)` sugar for `Drop::pin_drop`.
     pin_drop_sugar_impl_items: NodeSet = Default::default(),
     /// Resolutions for import nodes, which have multiple resolutions in different namespaces.
@@ -1853,7 +1851,6 @@ impl<'ra, 'tcx> Resolver<'ra, 'tcx> {
             multi_segment_macro_resolutions: Default::default(),
             lint_buffer: LintBuffer::default(),
             node_id_to_def_id,
-            local_lang_drop_traits: Default::default(),
             pin_drop_sugar_impl_items: Default::default(),
             invocation_parents,
             trait_impls: Default::default(),

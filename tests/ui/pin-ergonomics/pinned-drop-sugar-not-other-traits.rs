@@ -14,7 +14,7 @@ trait NeedsPinDrop {
 impl NeedsPinDrop for S {
     //~^ ERROR not all trait items implemented, missing: `pin_drop` [E0046]
     fn drop(&pin mut self) {}
-    //~^ ERROR method `drop` is not a member of trait `NeedsPinDrop`
+    //~^ ERROR method `drop` with `&pin mut self` is only supported for the `Drop` trait
 }
 
 trait HasDrop {
@@ -22,7 +22,9 @@ trait HasDrop {
 }
 
 impl HasDrop for S {
+    //~^ ERROR not all trait items implemented, missing: `drop` [E0046]
     fn drop(&pin mut self) {}
+    //~^ ERROR method `drop` with `&pin mut self` is only supported for the `Drop` trait
 }
 
 trait HasPinnedDropReceiver {
@@ -30,7 +32,9 @@ trait HasPinnedDropReceiver {
 }
 
 impl HasPinnedDropReceiver for S {
+    //~^ ERROR not all trait items implemented, missing: `drop` [E0046]
     fn drop(&pin mut self) {}
+    //~^ ERROR method `drop` with `&pin mut self` is only supported for the `Drop` trait
 }
 
 struct Inherent;
@@ -51,7 +55,7 @@ mod local_drop_trait {
     impl Drop for S {
         //~^ ERROR not all trait items implemented, missing: `pin_drop` [E0046]
         fn drop(&pin mut self) {}
-        //~^ ERROR method `drop` is not a member of trait `Drop`
+        //~^ ERROR method `drop` with `&pin mut self` is only supported for the `Drop` trait
     }
 }
 
