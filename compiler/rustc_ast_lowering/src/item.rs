@@ -1192,26 +1192,40 @@ impl<'hir> LoweringContext<'_, 'hir> {
         })
     }
 
-    fn validate_pin_drop_sugar_impl_item(
+    fn resolve_pin_drop_sugar_impl_item(
         &self,
         i: &AssocItem,
         ident: Ident,
-        trait_item_def_id: Result<DefId, ErrorGuaranteed>,
-    ) -> (Ident, Result<DefId, ErrorGuaranteed>) {
-        let def_id = match trait_item_def_id {
-            Ok(def_id) => def_id,
-            Err(guar) => return (ident, Err(guar)),
+        span: Span,
+    ) -> Option<(Ident, Result<DefId, ErrorGuaranteed>)> {
+        let AssocItemKind::Fn(Fn { sig, .. }) = &i.kind else {
+            return None;
+        };
+        let is_pin_drop_sugar =
+            ident.name == sym::drop
+                && sig.decl.inputs.first().and_then(|param| param.to_self()).is_some_and(|eself| {
+                    matches!(eself.node, SelfKind::Pinned(None, Mutability::Mut))
+                });
+        if !is_pin_drop_sugar {
+            return None;
+        }
+
+        let Some(def_id) =
+            self.get_partial_res(i.id).and_then(|r| r.expect_full_res().opt_def_id())
+        else {
+            let guar =
+                self.dcx().span_delayed_bug(span, "could not resolve trait item being implemented");
+            return Some((ident, Err(guar)));
         };
 
-        let def_key = self.tcx.def_key(def_id);
-        let parent = def_key.parent.map(|index| DefId { krate: def_id.krate, index });
-        let is_drop_pin_drop = self.tcx.lang_items().drop_trait().is_some_and(|drop_trait| {
-            parent == Some(drop_trait)
-                && def_key.disambiguated_data.data.get_opt_name() == Some(sym::pin_drop)
-        });
+        let is_drop_pin_drop = self
+            .tcx
+            .lang_items()
+            .drop_trait()
+            .is_some_and(|drop_trait| self.tcx.parent(def_id) == drop_trait);
         if is_drop_pin_drop {
             // Associated item collection still derives the impl item's name from HIR.
-            return (Ident::new(sym::pin_drop, ident.span), Ok(def_id));
+            return Some((Ident::new(sym::pin_drop, ident.span), Ok(def_id)));
         }
 
         let guar = self
@@ -1222,7 +1236,7 @@ impl<'hir> LoweringContext<'_, 'hir> {
             )
             .with_span_label(i.span, "not a `Drop::pin_drop` implementation")
             .emit();
-        (ident, Err(guar))
+        Some((ident, Err(guar)))
     }
 
     fn lower_impl_item(
@@ -1343,19 +1357,19 @@ impl<'hir> LoweringContext<'_, 'hir> {
 
         let span = self.lower_span(i.span);
         let (effective_ident, impl_kind) = if is_in_trait_impl {
-            let trait_item_def_id = self
-                .get_partial_res(i.id)
-                .and_then(|r| r.expect_full_res().opt_def_id())
-                .ok_or_else(|| {
-                    self.dcx()
-                        .span_delayed_bug(span, "could not resolve trait item being implemented")
-                });
             let (effective_ident, trait_item_def_id) =
-                if self.resolver.pin_drop_sugar_impl_items.contains(&i.id) {
-                    self.validate_pin_drop_sugar_impl_item(i, ident, trait_item_def_id)
-                } else {
+                self.resolve_pin_drop_sugar_impl_item(i, ident, span).unwrap_or_else(|| {
+                    let trait_item_def_id = self
+                        .get_partial_res(i.id)
+                        .and_then(|r| r.expect_full_res().opt_def_id())
+                        .ok_or_else(|| {
+                            self.dcx().span_delayed_bug(
+                                span,
+                                "could not resolve trait item being implemented",
+                            )
+                        });
                     (ident, trait_item_def_id)
-                };
+                });
             (effective_ident, ImplItemImplKind::Trait { defaultness, trait_item_def_id })
         } else {
             (ident, ImplItemImplKind::Inherent { vis_span: self.lower_span(i.vis.span) })

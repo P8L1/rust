@@ -3548,15 +3548,14 @@ impl<'a, 'ast, 'ra, 'tcx> LateResolutionVisitor<'a, 'ast, 'ra, 'tcx> {
         ident: Ident,
         sig: &FnSig,
     ) -> bool {
-        if !is_in_trait_impl || ident.name != sym::drop {
-            return false;
-        }
-
-        sig.decl.inputs.first().is_some_and(|param| {
-            param
-                .to_self()
+        is_in_trait_impl
+            && ident.name == sym::drop
+            && sig
+                .decl
+                .inputs
+                .first()
+                .and_then(|param| param.to_self())
                 .is_some_and(|eself| matches!(eself.node, SelfKind::Pinned(None, Mutability::Mut)))
-        })
     }
 
     fn resolve_impl_item(
@@ -3670,34 +3669,18 @@ impl<'a, 'ast, 'ra, 'tcx> LateResolutionVisitor<'a, 'ast, 'ra, 'tcx> {
                         } else {
                             *ident
                         };
-                        let diagnostic_ident =
-                            if is_pin_drop_sugar { *ident } else { effective_ident };
                         // If this is a trait impl, ensure the method
                         // exists in trait
                         this.check_trait_item(
                             item.id,
                             effective_ident,
-                            diagnostic_ident,
+                            *ident,
                             &item.kind,
                             ValueNS,
                             item.span,
                             seen_trait_items,
-                            |i, s, c| {
-                                if is_pin_drop_sugar {
-                                    PinDropSugarOnlyForDrop
-                                } else {
-                                    MethodNotMemberOfTrait(i, s, c)
-                                }
-                            },
+                            |i, s, c| MethodNotMemberOfTrait(i, s, c),
                         );
-
-                        if is_pin_drop_sugar
-                            && this.r.partial_res_map.get(&item.id).is_some_and(|res| {
-                                matches!(res.full_res(), Some(Res::Def(DefKind::AssocFn, _)))
-                            })
-                        {
-                            this.r.pin_drop_sugar_impl_items.insert(item.id);
-                        }
 
                         visit::walk_assoc_item(this, item, AssocCtxt::Impl { of_trait: true })
                     },
@@ -3773,7 +3756,7 @@ impl<'a, 'ast, 'ra, 'tcx> LateResolutionVisitor<'a, 'ast, 'ra, 'tcx> {
         &mut self,
         id: NodeId,
         mut ident: Ident,
-        mut diagnostic_ident: Ident,
+        mut reported_ident: Ident,
         kind: &AssocItemKind,
         ns: Namespace,
         span: Span,
@@ -3787,7 +3770,7 @@ impl<'a, 'ast, 'ra, 'tcx> LateResolutionVisitor<'a, 'ast, 'ra, 'tcx> {
             return;
         };
         ident.span.normalize_to_macros_2_0_and_adjust(module.expansion);
-        diagnostic_ident.span.normalize_to_macros_2_0_and_adjust(module.expansion);
+        reported_ident.span.normalize_to_macros_2_0_and_adjust(module.expansion);
         let key = BindingKey::new(IdentKey::new(ident), ns);
         let mut decl = self.r.resolution(module, key).and_then(|r| r.best_decl());
         debug!(?decl);
@@ -3823,10 +3806,10 @@ impl<'a, 'ast, 'ra, 'tcx> LateResolutionVisitor<'a, 'ast, 'ra, 'tcx> {
 
         let Some(decl) = decl else {
             // We could not find the method: report an error.
-            let candidate = self.find_similarly_named_assoc_item(diagnostic_ident.name, kind);
+            let candidate = self.find_similarly_named_assoc_item(reported_ident.name, kind);
             let path = &self.current_trait_ref.as_ref().unwrap().1.path;
             let path_names = path_names_to_string(path);
-            self.report_error(span, err(diagnostic_ident, path_names, candidate));
+            self.report_error(span, err(reported_ident, path_names, candidate));
             feed_visibility(self, module.def_id());
             return;
         };

@@ -704,13 +704,6 @@ impl<'ra, 'tcx> Resolver<'ra, 'tcx> {
                     }),
                 })
             }
-            ResolutionError::PinDropSugarOnlyForDrop => self
-                .dcx()
-                .struct_span_err(
-                    span,
-                    "method `drop` with `&pin mut self` is only supported for the `Drop` trait",
-                )
-                .with_span_label(span, "not a `Drop::pin_drop` implementation"),
             ResolutionError::TypeNotMemberOfTrait(type_, trait_, candidate) => {
                 self.dcx().create_err(errs::TypeNotMemberOfTrait {
                     span,

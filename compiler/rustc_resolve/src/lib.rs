@@ -37,7 +37,7 @@ use late::{
 };
 use macros::{MacroRulesDecl, MacroRulesScope, MacroRulesScopeRef};
 use rustc_arena::{DroplessArena, TypedArena};
-use rustc_ast::node_id::{NodeMap, NodeSet};
+use rustc_ast::node_id::NodeMap;
 use rustc_ast::{
     self as ast, AngleBracketedArg, CRATE_NODE_ID, Crate, Expr, ExprKind, GenericArg, GenericArgs,
     Generics, NodeId, Path, attr,
@@ -257,8 +257,6 @@ enum ResolutionError<'ra> {
     NameAlreadyUsedInParameterList(Ident, Span),
     /// Error E0407: method is not a member of trait.
     MethodNotMemberOfTrait(Ident, String, Option<Symbol>),
-    /// `fn drop(&pin mut self)` is only valid as `Drop::pin_drop` sugar.
-    PinDropSugarOnlyForDrop,
     /// Error E0437: type is not a member of trait.
     TypeNotMemberOfTrait(Ident, String, Option<Symbol>),
     /// Error E0438: const is not a member of trait.
@@ -1373,8 +1371,6 @@ pub struct Resolver<'ra, 'tcx> {
 
     /// Resolutions for nodes that have a single resolution.
     partial_res_map: NodeMap<PartialRes> = Default::default(),
-    /// Impl items accepted as `fn drop(&pin mut self)` sugar for `Drop::pin_drop`.
-    pin_drop_sugar_impl_items: NodeSet = Default::default(),
     /// Resolutions for import nodes, which have multiple resolutions in different namespaces.
     import_res_map: NodeMap<PerNS<Option<Res>>> = Default::default(),
     /// An import will be inserted into this map if it has been used.
@@ -1851,7 +1847,6 @@ impl<'ra, 'tcx> Resolver<'ra, 'tcx> {
             multi_segment_macro_resolutions: Default::default(),
             lint_buffer: LintBuffer::default(),
             node_id_to_def_id,
-            pin_drop_sugar_impl_items: Default::default(),
             invocation_parents,
             trait_impls: Default::default(),
             confused_type_with_std_module: Default::default(),
@@ -1983,7 +1978,6 @@ impl<'ra, 'tcx> Resolver<'ra, 'tcx> {
         };
         let ast_lowering = ty::ResolverAstLowering {
             partial_res_map: self.partial_res_map,
-            pin_drop_sugar_impl_items: self.pin_drop_sugar_impl_items,
             import_res_map: self.import_res_map,
             label_res_map: self.label_res_map,
             lifetimes_res_map: self.lifetimes_res_map,
