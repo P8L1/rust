@@ -230,9 +230,13 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 })?;
             }
 
-            Reborrow(_, _, place) => {
+            Reborrow(_, mutability, place) => {
                 let op = self.eval_place_to_op(place, Some(dest.layout))?;
-                self.copy_op(&op, &dest)?;
+                if mutability.is_mut() {
+                    M::with_retag_mode(self, RetagMode::Default, |ecx| ecx.copy_op(&op, &dest))?;
+                } else {
+                    self.copy_op(&op, &dest)?;
+                }
             }
 
             RawPtr(kind, place) => {
