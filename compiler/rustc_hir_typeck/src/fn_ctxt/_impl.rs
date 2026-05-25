@@ -399,6 +399,12 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                         *entry.get_mut() = adj;
                     }
 
+                    (_, &[Adjustment { kind: Adjust::Borrow(AutoBorrow::Ref(_)), .. }]) => {
+                        // By-reference operators can first apply adjustments to coerce the RHS,
+                        // then autoref the adjusted result for the overloaded operator method.
+                        entry.get_mut().extend(adj);
+                    }
+
                     _ => {
                         // FIXME: currently we never try to compose autoderefs
                         // and ReifyFnPointer/UnsafeFnPointer, but we could.
