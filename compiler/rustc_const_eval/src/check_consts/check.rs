@@ -611,7 +611,9 @@ impl<'tcx> Visitor<'tcx> for Checker<'_, 'tcx> {
             }
 
             Rvalue::Reborrow(..) => {
-                // FIXME(reborrow): figure out if this is relevant at all.
+                // Generic reborrows do not introduce a const operation by themselves: borrowck
+                // enforces the lifetime of the reborrow, while const qualif propagation handles
+                // the mutation permissions of the source place.
             }
 
             Rvalue::RawPtr(RawPtrKind::FakeForPtrMetadata, place) => {
