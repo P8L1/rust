@@ -983,12 +983,13 @@ impl<'f, 'tcx> Coerce<'f, 'tcx> {
                 ForceLeakCheck::No,
             )
         } else {
-            // FIXME: CoerceShared check goes here, error for now
+            // Shared generic reborrows between distinct ADTs are handled by
+            // `coerce_shared_reborrow` after target-specific coercions fail.
             Err(TypeError::Mismatch)
         }
     }
 
-    /// Applies generic exclusive reborrowing on type implementing `Reborrow`.
+    /// Applies generic shared reborrowing on a type implementing `CoerceShared`.
     #[instrument(skip(self), level = "trace")]
     fn coerce_shared_reborrow(&self, a: Ty<'tcx>, b: Ty<'tcx>) -> CoerceResult<'tcx> {
         debug_assert!(self.shallow_resolve(a) == a);
