@@ -344,7 +344,8 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                     // FIXME(const_trait_impl): We should probably enforce these.
                 }
                 Adjust::GenericReborrow(_) => {
-                    // FIXME(reborrow): figure out if we have effects to enforce here.
+                    // No effects to enforce here; this lowers directly to
+                    // `ExprKind::Reborrow`, not a trait method call.
                 }
                 Adjust::Borrow(_) => {
                     // No effects to enforce here.
