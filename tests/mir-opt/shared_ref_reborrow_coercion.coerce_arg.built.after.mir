@@ -1,0 +1,61 @@
+// MIR for `coerce_arg` after built
+
+fn coerce_arg(_1: &u32, _2: &u32, _3: bool) -> () {
+    debug x => _1;
+    debug y => _2;
+    debug flag => _3;
+    let mut _0: ();
+    let _4: &u32;
+    let mut _5: bool;
+    let _6: &u32;
+    let _7: ();
+    let mut _8: &u32;
+    scope 1 {
+        debug z => _4;
+    }
+
+    bb0: {
+        StorageLive(_4);
+        StorageLive(_5);
+        _5 = copy _3;
+        switchInt(move _5) -> [0: bb2, otherwise: bb1];
+    }
+
+    bb1: {
+        _4 = copy _1;
+        goto -> bb4;
+    }
+
+    bb2: {
+        goto -> bb3;
+    }
+
+    bb3: {
+        StorageLive(_6);
+        _6 = copy _2;
+        _4 = &(*_6);
+        StorageDead(_6);
+        goto -> bb4;
+    }
+
+    bb4: {
+        StorageDead(_5);
+        FakeRead(ForLet(None), _4);
+        StorageLive(_7);
+        StorageLive(_8);
+        _8 = &(*_4);
+        _7 = take(move _8) -> [return: bb5, unwind: bb6];
+    }
+
+    bb5: {
+        StorageDead(_8);
+        StorageDead(_7);
+        _0 = const ();
+        StorageDead(_4);
+        return;
+    }
+
+    bb6 (cleanup): {
+        resume;
+    }
+}
