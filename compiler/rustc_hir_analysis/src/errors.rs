@@ -1379,6 +1379,16 @@ pub(crate) struct CoerceSharedMulti {
 }
 
 #[derive(Diagnostic)]
+#[diag(
+    "implementing `{$trait_name}` requires all source and target fields to be accessible from the impl"
+)]
+pub(crate) struct CoerceSharedInaccessibleField {
+    #[primary_span]
+    pub span: Span,
+    pub trait_name: &'static str,
+}
+
+#[derive(Diagnostic)]
 #[diag("the trait `{$trait_name}` may only be implemented for a coercion between structures", code = E0377)]
 pub(crate) struct CoerceUnsizedNonStruct {
     #[primary_span]

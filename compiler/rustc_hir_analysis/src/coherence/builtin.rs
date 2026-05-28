@@ -663,6 +663,9 @@ pub(crate) fn coerce_shared_info<'tcx>(
                 return Err(tcx.dcx().emit_err(errors::CoerceSharedMulti { span, trait_name }));
             }
 
+            validate_reborrow_field_access(tcx, impl_did, def_a, trait_name, span)?;
+            validate_reborrow_field_access(tcx, impl_did, def_b, trait_name, span)?;
+
             if a_data_fields.len() == 1 {
                 // We found one data field for both: we'll attempt to perform CoerceShared between
                 // them below.
@@ -746,6 +749,30 @@ fn trait_impl_lifetime_params_count(tcx: TyCtxt<'_>, did: LocalDefId) -> usize {
 
 fn generic_lifetime_params_count(args: &[ty::GenericArg<'_>]) -> usize {
     args.iter().filter(|arg| arg.as_region().is_some()).count()
+}
+
+fn validate_reborrow_field_access(
+    tcx: TyCtxt<'_>,
+    impl_did: LocalDefId,
+    def: ty::AdtDef<'_>,
+    trait_name: &'static str,
+    span: Span,
+) -> Result<(), ErrorGuaranteed> {
+    let module = tcx.parent_module_from_def_id(impl_did);
+    let variant = def.non_enum_variant();
+    if variant.field_list_has_applicable_non_exhaustive() {
+        return Err(tcx.dcx().emit_err(errors::CoerceSharedInaccessibleField { span, trait_name }));
+    }
+
+    for field in &variant.fields {
+        if !field.vis.is_accessible_from(module, tcx) {
+            return Err(tcx
+                .dcx()
+                .emit_err(errors::CoerceSharedInaccessibleField { span, trait_name }));
+        }
+    }
+
+    Ok(())
 }
 
 // FIXME(#155345): This should return `Unnormalized`
